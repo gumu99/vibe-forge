@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 
 import { parseGeneration } from "./parse";
+import { ERROR_MARK } from "./prompt";
 
 export type Turn = { role: "user" | "assistant"; content: string };
 
@@ -100,6 +101,11 @@ export function useStudio() {
           const partial = parseGeneration(raw);
           if (partial.code) setStreamCode(partial.code);
           if (partial.title) setStreamTitle(partial.title);
+        }
+
+        const errorIndex = raw.indexOf(ERROR_MARK);
+        if (errorIndex !== -1) {
+          throw new Error(raw.slice(errorIndex + ERROR_MARK.length).trim());
         }
 
         const parsed = parseGeneration(raw);

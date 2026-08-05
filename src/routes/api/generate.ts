@@ -2,7 +2,16 @@ import { createFileRoute } from "@tanstack/react-router";
 import { streamText, type ModelMessage } from "ai";
 
 import { createLovableAiGatewayProvider, getLovableAiGatewayRunId } from "@/lib/ai-gateway.server";
-import { SYSTEM_PROMPT } from "@/lib/vibe/prompt";
+import { ERROR_MARK, SYSTEM_PROMPT } from "@/lib/vibe/prompt";
+
+function friendlyError(error: unknown): string {
+  const status = (error as { statusCode?: number } | null)?.statusCode;
+  if (status === 429) return "Too many requests right now — wait a few seconds and try again.";
+  if (status === 402)
+    return "This workspace is out of AI credits. Add credits to keep generating apps.";
+  const message = error instanceof Error ? error.message : "Generation failed.";
+  return message.slice(0, 300);
+}
 
 type Turn = { role: "user" | "assistant"; content: string };
 type Body = { turns?: Turn[] };
@@ -49,20 +58,33 @@ export const Route = createFileRoute("/api/generate")({
             model: gateway("google/gemini-3.6-flash"),
             system: SYSTEM_PROMPT,
             messages,
-            onError: ({ error }) => {
-              console.error("[vibe] generation stream error", error);
+          });
+
+          // Errors can surface after headers are sent, so failures travel in-band.
+          const stream = new ReadableStream<Uint8Array>({
+            async start(controller) {
+              const encoder = new TextEncoder();
+              try {
+                for await (const chunk of result.textStream) {
+                  controller.enqueue(encoder.encode(chunk));
+                }
+              } catch (streamError) {
+                console.error("[vibe] generation stream error", streamError);
+                controller.enqueue(encoder.encode(ERROR_MARK + friendlyError(streamError)));
+              }
+              controller.close();
             },
           });
 
-          return result.toTextStreamResponse();
+          return new Response(stream, {
+            headers: {
+              "Content-Type": "text/plain; charset=utf-8",
+              "Cache-Control": "no-store",
+            },
+          });
         } catch (error) {
-          const message = error instanceof Error ? error.message : "Generation failed.";
-          const status = /rate limit|429/i.test(message)
-            ? 429
-            : /credit|402|payment/i.test(message)
-              ? 402
-              : 500;
-          return new Response(message, { status });
+          console.error("[vibe] generation failed", error);
+          return new Response(friendlyError(error), { status: 500 });
         }
       },
     },

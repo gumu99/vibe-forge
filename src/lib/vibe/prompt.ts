@@ -2,6 +2,7 @@ export const TITLE_MARK = "<<<TITLE>>>";
 export const CODE_MARK = "<<<CODE>>>";
 export const NOTES_MARK = "<<<NOTES>>>";
 export const IDEAS_MARK = "<<<IDEAS>>>";
+export const ERROR_MARK = "<<<ERROR>>>";
 
 export const SYSTEM_PROMPT = `You are Vibe Coder, a senior product engineer and UI/UX designer.
 You build complete, working, single-file web applications from natural language.
