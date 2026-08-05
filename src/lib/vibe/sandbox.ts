@@ -19,7 +19,10 @@ const SHIM =
     parent.postMessage({ __vibe: "runtime-error", message: String(event.message) }, "*");
   });
 })();
-</scr" + "ipt>`;
+` +
+  "</scr" +
+  "ipt>";
+
 
 /** Injects a sandbox-safe storage shim and error reporter into generated documents. */
 export function buildSrcDoc(code: string): string {
