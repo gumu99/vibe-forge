@@ -1,4 +1,7 @@
-const SHIM = `<script>
+const SHIM =
+  "<scr" +
+  "ipt>" +
+  `
 (function () {
   try { window.localStorage.getItem("__probe__"); } catch (error) {
     var store = {};
@@ -16,7 +19,7 @@ const SHIM = `<script>
     parent.postMessage({ __vibe: "runtime-error", message: String(event.message) }, "*");
   });
 })();
-<\/script>`;
+</scr" + "ipt>`;
 
 /** Injects a sandbox-safe storage shim and error reporter into generated documents. */
 export function buildSrcDoc(code: string): string {

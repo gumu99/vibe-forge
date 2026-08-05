@@ -38,12 +38,7 @@ function VibeCoder() {
 
   if (!hasProject) {
     return (
-      <Landing
-        onSubmit={studio.generate}
-        onStop={studio.stop}
-        busy={busy}
-        error={studio.error}
-      />
+      <Landing onSubmit={studio.generate} onStop={studio.stop} busy={busy} error={studio.error} />
     );
   }
 

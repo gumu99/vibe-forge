@@ -158,7 +158,6 @@ export function useStudio() {
     [versions],
   );
 
-
   return {
     versions,
     activeVersion,
