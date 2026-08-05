@@ -54,10 +54,16 @@ export const Route = createFileRoute("/api/generate")({
         }));
 
         try {
+          let streamFailure: unknown = null;
           const result = streamText({
             model: gateway("google/gemini-3.6-flash"),
             system: SYSTEM_PROMPT,
             messages,
+            // The AI SDK routes mid-stream failures here instead of throwing.
+            onError: ({ error }) => {
+              streamFailure = error;
+              console.error("[vibe] generation stream error", error);
+            },
           });
 
           // Errors can surface after headers are sent, so failures travel in-band.
@@ -69,8 +75,11 @@ export const Route = createFileRoute("/api/generate")({
                   controller.enqueue(encoder.encode(chunk));
                 }
               } catch (streamError) {
+                streamFailure = streamError;
                 console.error("[vibe] generation stream error", streamError);
-                controller.enqueue(encoder.encode(ERROR_MARK + friendlyError(streamError)));
+              }
+              if (streamFailure) {
+                controller.enqueue(encoder.encode(ERROR_MARK + friendlyError(streamFailure)));
               }
               controller.close();
             },
