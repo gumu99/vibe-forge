@@ -23,7 +23,6 @@ const SHIM =
   "</scr" +
   "ipt>";
 
-
 /** Injects a sandbox-safe storage shim and error reporter into generated documents. */
 export function buildSrcDoc(code: string): string {
   if (!code.trim()) return "";
