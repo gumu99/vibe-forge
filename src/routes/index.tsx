@@ -126,7 +126,7 @@ function VibeCoder() {
           >
             <PreviewPane code={code} streaming={busy} title={title} assets={assets} />
           </div>
-          <div className={`min-h-0 ${tab === "preview" ? "hidden" : "block"} lg:block`}>
+          <div className={`flex min-h-0 flex-col ${tab === "preview" ? "hidden" : "flex"} lg:flex`}>
             <div className="hidden items-center gap-1 border-b border-hairline px-3 py-2 lg:flex">
               {(
                 [
@@ -150,16 +150,18 @@ function VibeCoder() {
                 </button>
               ))}
             </div>
-            {tab === "assets" ? (
-              <AssetsPane
-                assets={assets}
-                maxAssets={studio.maxAssets}
-                onRegenerate={studio.regenerateAsset}
-                onAdd={studio.addAsset}
-              />
-            ) : (
-              <CodePane code={code} streaming={busy} title={title} />
-            )}
+            <div className="min-h-0 flex-1">
+              {tab === "assets" ? (
+                <AssetsPane
+                  assets={assets}
+                  maxAssets={studio.maxAssets}
+                  onRegenerate={studio.regenerateAsset}
+                  onAdd={studio.addAsset}
+                />
+              ) : (
+                <CodePane code={code} streaming={busy} title={title} />
+              )}
+            </div>
           </div>
         </div>
       </div>
