@@ -57,7 +57,9 @@ export const Route = createFileRoute("/api/image")({
               content?: { parts?: { inlineData?: { data?: string; mimeType?: string } }[] };
             }[];
           };
-          const part = payload.candidates?.[0]?.content?.parts?.find((item) => item.inlineData?.data);
+          const part = payload.candidates?.[0]?.content?.parts?.find(
+            (item) => item.inlineData?.data,
+          );
 
           if (!part?.inlineData?.data) {
             return Response.json(
