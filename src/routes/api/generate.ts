@@ -41,12 +41,16 @@ export const Route = createFileRoute("/api/generate")({
           return new Response("Describe what you want to build.", { status: 400 });
         }
 
-        const key = process.env["LOVABLE_API_KEY"];
+        const key = process.env["GEMINI_API_KEY"];
         if (!key) {
           return new Response("AI is not configured for this project.", { status: 500 });
         }
 
-        const gateway = createLovableAiGatewayProvider(key, getLovableAiGatewayRunId(request));
+        const gateway = createOpenAICompatible({
+          name: "google",
+          baseURL: "https://generativelanguage.googleapis.com/v1beta/openai",
+          apiKey: key,
+        });
 
         const messages: ModelMessage[] = valid.slice(-MAX_TURNS).map((turn) => ({
           role: turn.role,
