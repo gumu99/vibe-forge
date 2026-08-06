@@ -2,15 +2,72 @@ import { createFileRoute } from "@tanstack/react-router";
 
 type Body = { prompt?: string; aspect?: string };
 
-const MODEL = "gemini-2.5-flash-image";
-const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
+const GEMINI_MODEL = "gemini-3.1-flash-lite-image";
+const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+const GATEWAY_ENDPOINT = "https://ai.gateway.lovable.dev/v1/images/generations";
+const GATEWAY_MODEL = "google/gemini-3.1-flash-lite-image";
 
-function friendly(status: number, detail: string): string {
-  if (status === 429) return "Image quota hit — wait a moment and retry this image.";
-  if (status === 403) return "The Gemini key isn't allowed to generate images.";
-  if (status === 400 && /safety|blocked/i.test(detail))
-    return "That image prompt was blocked by safety filters.";
-  return detail.slice(0, 240) || "Image generation failed.";
+type Generated = { b64: string; mimeType: string };
+
+function inlineImage(payload: unknown): Generated | null {
+  const parts = (
+    payload as {
+      candidates?: { content?: { parts?: { inlineData?: { data?: string; mimeType?: string } }[] } }[];
+    }
+  ).candidates?.[0]?.content?.parts;
+  const found = parts?.find((part) => part.inlineData?.data);
+  if (!found?.inlineData?.data) return null;
+  return { b64: found.inlineData.data, mimeType: found.inlineData.mimeType ?? "image/png" };
+}
+
+async function viaGemini(key: string, text: string): Promise<Generated> {
+  const response = await fetch(GEMINI_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: [{ text }] }],
+      generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
+    }),
+  });
+  const detail = await response.text();
+  if (!response.ok) {
+    console.error("[vibe] gemini image failed", response.status, detail.slice(0, 300));
+    throw new Error(
+      response.status === 429
+        ? "Gemini image quota is 0 on the free tier — enable billing on your Google AI Studio key, or add Lovable AI credits."
+        : /safety|blocked/i.test(detail)
+          ? "That image prompt was blocked by safety filters."
+          : `Gemini image error (${response.status}).`,
+    );
+  }
+  const image = inlineImage(JSON.parse(detail));
+  if (!image) throw new Error("The model returned no image for that prompt.");
+  return image;
+}
+
+async function viaGateway(key: string, text: string): Promise<Generated> {
+  const response = await fetch(GATEWAY_ENDPOINT, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: GATEWAY_MODEL,
+      contents: [{ role: "user", parts: [{ text }] }],
+      generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
+    }),
+  });
+  const detail = await response.text();
+  if (!response.ok) {
+    console.error("[vibe] gateway image failed", response.status, detail.slice(0, 300));
+    throw new Error(
+      response.status === 402
+        ? "Lovable AI credits are exhausted, and the Gemini free tier has no image quota."
+        : `Image generation failed (${response.status}).`,
+    );
+  }
+  const parsed = JSON.parse(detail) as { data?: { b64_json?: string }[] };
+  const b64 = parsed.data?.[0]?.b64_json ?? inlineImage(parsed)?.b64;
+  if (!b64) throw new Error("The model returned no image for that prompt.");
+  return { b64, mimeType: "image/png" };
 }
 
 export const Route = createFileRoute("/api/image")({
@@ -27,55 +84,32 @@ export const Route = createFileRoute("/api/image")({
         const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
         if (!prompt) return Response.json({ error: "Missing image prompt." }, { status: 400 });
 
-        const key = process.env["GEMINI_API_KEY"];
-        if (!key) return Response.json({ error: "AI is not configured." }, { status: 500 });
+        const geminiKey = process.env["GEMINI_API_KEY"];
+        const gatewayKey = process.env["LOVABLE_API_KEY"];
+        if (!geminiKey && !gatewayKey) {
+          return Response.json({ error: "Image AI is not configured." }, { status: 500 });
+        }
 
         const aspect = body.aspect && /^\d+:\d+$/.test(body.aspect) ? body.aspect : "16:9";
         const text = `Generate a single high-quality image with a ${aspect} aspect ratio. ${prompt}. No text, watermarks or logos unless explicitly requested.`;
 
-        try {
-          const upstream = await fetch(ENDPOINT, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "x-goog-api-key": key },
-            body: JSON.stringify({
-              contents: [{ role: "user", parts: [{ text }] }],
-              generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
-            }),
-          });
+        let lastError = "Image generation failed.";
 
-          const detail = await upstream.text();
-          if (!upstream.ok) {
-            console.error("[vibe] image generation failed", upstream.status, detail.slice(0, 400));
-            return Response.json(
-              { error: friendly(upstream.status, detail) },
-              { status: upstream.status },
-            );
+        // Prefer the user's own Gemini key, then fall back to the Lovable gateway.
+        for (const attempt of [
+          geminiKey ? () => viaGemini(geminiKey, text) : null,
+          gatewayKey ? () => viaGateway(gatewayKey, text) : null,
+        ]) {
+          if (!attempt) continue;
+          try {
+            const image = await attempt();
+            return Response.json(image);
+          } catch (error) {
+            lastError = error instanceof Error ? error.message : lastError;
           }
-
-          const payload = JSON.parse(detail) as {
-            candidates?: {
-              content?: { parts?: { inlineData?: { data?: string; mimeType?: string } }[] };
-            }[];
-          };
-          const part = payload.candidates?.[0]?.content?.parts?.find(
-            (item) => item.inlineData?.data,
-          );
-
-          if (!part?.inlineData?.data) {
-            return Response.json(
-              { error: "The model returned no image for that prompt." },
-              { status: 502 },
-            );
-          }
-
-          return Response.json({
-            b64: part.inlineData.data,
-            mimeType: part.inlineData.mimeType ?? "image/png",
-          });
-        } catch (error) {
-          console.error("[vibe] image generation error", error);
-          return Response.json({ error: "Image generation failed." }, { status: 500 });
         }
+
+        return Response.json({ error: lastError }, { status: 502 });
       },
     },
   },
