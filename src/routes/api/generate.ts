@@ -60,7 +60,7 @@ export const Route = createFileRoute("/api/generate")({
         try {
           let streamFailure: unknown = null;
           const result = streamText({
-            model: gateway("google/gemini-3.6-flash"),
+            model: gateway("gemini-flash-latest"),
             system: SYSTEM_PROMPT,
             messages,
             // The AI SDK routes mid-stream failures here instead of throwing.
