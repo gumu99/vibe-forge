@@ -12,7 +12,9 @@ type Generated = { b64: string; mimeType: string };
 function inlineImage(payload: unknown): Generated | null {
   const parts = (
     payload as {
-      candidates?: { content?: { parts?: { inlineData?: { data?: string; mimeType?: string } }[] } }[];
+      candidates?: {
+        content?: { parts?: { inlineData?: { data?: string; mimeType?: string } }[] };
+      }[];
     }
   ).candidates?.[0]?.content?.parts;
   const found = parts?.find((part) => part.inlineData?.data);
