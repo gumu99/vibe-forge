@@ -1,7 +1,7 @@
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createFileRoute } from "@tanstack/react-router";
 import { streamText, type ModelMessage } from "ai";
 
-import { createLovableAiGatewayProvider, getLovableAiGatewayRunId } from "@/lib/ai-gateway.server";
 import { ERROR_MARK, SYSTEM_PROMPT } from "@/lib/vibe/prompt";
 
 function friendlyError(error: unknown): string {
@@ -41,12 +41,16 @@ export const Route = createFileRoute("/api/generate")({
           return new Response("Describe what you want to build.", { status: 400 });
         }
 
-        const key = process.env["LOVABLE_API_KEY"];
+        const key = process.env["GEMINI_API_KEY"];
         if (!key) {
           return new Response("AI is not configured for this project.", { status: 500 });
         }
 
-        const gateway = createLovableAiGatewayProvider(key, getLovableAiGatewayRunId(request));
+        const gateway = createOpenAICompatible({
+          name: "google",
+          baseURL: "https://generativelanguage.googleapis.com/v1beta/openai",
+          apiKey: key,
+        });
 
         const messages: ModelMessage[] = valid.slice(-MAX_TURNS).map((turn) => ({
           role: turn.role,
@@ -56,7 +60,7 @@ export const Route = createFileRoute("/api/generate")({
         try {
           let streamFailure: unknown = null;
           const result = streamText({
-            model: gateway("google/gemini-3.6-flash"),
+            model: gateway("gemini-flash-latest"),
             system: SYSTEM_PROMPT,
             messages,
             // The AI SDK routes mid-stream failures here instead of throwing.
