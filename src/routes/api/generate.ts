@@ -1,7 +1,7 @@
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createFileRoute } from "@tanstack/react-router";
 import { streamText, type ModelMessage } from "ai";
 
-import { createLovableAiGatewayProvider, getLovableAiGatewayRunId } from "@/lib/ai-gateway.server";
 import { ERROR_MARK, SYSTEM_PROMPT } from "@/lib/vibe/prompt";
 
 function friendlyError(error: unknown): string {
