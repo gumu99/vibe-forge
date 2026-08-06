@@ -27,12 +27,11 @@ const newId = () =>
     ? crypto.randomUUID()
     : Math.random().toString(36).slice(2);
 
-async function requestImage(spec: { prompt: string; aspect: string }, signal?: AbortSignal) {
+async function requestImage(spec: { prompt: string; aspect: string }) {
   const response = await fetch("/api/image", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ prompt: spec.prompt, aspect: spec.aspect }),
-    signal,
   });
   const payload = (await response.json().catch(() => ({}))) as {
     b64?: string;

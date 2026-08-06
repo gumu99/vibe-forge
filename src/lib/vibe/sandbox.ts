@@ -5,8 +5,8 @@ export type ImageAsset = {
   aspect: string;
   prompt: string;
   status: AssetStatus;
-  dataUrl?: string;
-  error?: string;
+  dataUrl?: string | undefined;
+  error?: string | undefined;
 };
 
 const SHIM =
