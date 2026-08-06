@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 
-import { parseGeneration } from "./parse";
-import { ERROR_MARK } from "./prompt";
+import { parseGeneration, type ImageSpec } from "./parse";
+import { ERROR_MARK, MAX_IMAGES } from "./prompt";
+import type { ImageAsset } from "./sandbox";
 
 export type Turn = { role: "user" | "assistant"; content: string };
 
@@ -13,15 +14,35 @@ export type Version = {
   code: string;
   notes: string;
   ideas: string[];
+  assets: ImageAsset[];
   createdAt: number;
 };
 
 export type StudioStatus = "idle" | "streaming" | "error";
 
+const CONCURRENCY = 3;
+
 const newId = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : Math.random().toString(36).slice(2);
+
+async function requestImage(spec: { prompt: string; aspect: string }) {
+  const response = await fetch("/api/image", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt: spec.prompt, aspect: spec.aspect }),
+  });
+  const payload = (await response.json().catch(() => ({}))) as {
+    b64?: string;
+    mimeType?: string;
+    error?: string;
+  };
+  if (!response.ok || !payload.b64) {
+    throw new Error(payload.error || "Image generation failed.");
+  }
+  return `data:${payload.mimeType ?? "image/png"};base64,${payload.b64}`;
+}
 
 export function useStudio() {
   const [versions, setVersions] = useState<Version[]>([]);
@@ -37,6 +58,53 @@ export function useStudio() {
   const activeVersion = useMemo(
     () => versions.find((version) => version.id === activeId) ?? null,
     [versions, activeId],
+  );
+
+  const patchAsset = useCallback((versionId: string, slot: string, patch: Partial<ImageAsset>) => {
+    setVersions((current) =>
+      current.map((version) =>
+        version.id === versionId
+          ? {
+              ...version,
+              assets: version.assets.map((asset) =>
+                asset.slot === slot ? { ...asset, ...patch } : asset,
+              ),
+            }
+          : version,
+      ),
+    );
+  }, []);
+
+  const runImage = useCallback(
+    async (versionId: string, asset: { slot: string; prompt: string; aspect: string }) => {
+      patchAsset(versionId, asset.slot, { status: "pending", error: undefined });
+      try {
+        const dataUrl = await requestImage(asset);
+        patchAsset(versionId, asset.slot, { status: "ready", dataUrl, error: undefined });
+      } catch (caught) {
+        patchAsset(versionId, asset.slot, {
+          status: "error",
+          error: caught instanceof Error ? caught.message : "Image generation failed.",
+        });
+      }
+    },
+    [patchAsset],
+  );
+
+  /** Generates pending images a few at a time so the preview fills in progressively. */
+  const runImageQueue = useCallback(
+    async (versionId: string, specs: ImageSpec[]) => {
+      const queue = [...specs];
+      const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
+        for (;;) {
+          const next = queue.shift();
+          if (!next) return;
+          await runImage(versionId, next);
+        }
+      });
+      await Promise.all(workers);
+    },
+    [runImage],
   );
 
   const stop = useCallback(() => {
@@ -70,6 +138,7 @@ export function useStudio() {
       setStreamTitle("");
 
       const turns: Turn[] = [...turnsRef.current, { role: "user", content: trimmed }];
+      const previousAssets = activeVersion?.assets ?? [];
 
       try {
         const response = await fetch("/api/generate", {
@@ -115,6 +184,16 @@ export function useStudio() {
 
         turnsRef.current = [...turns, { role: "assistant", content: raw }];
 
+        // Reuse images whose slot and prompt are unchanged so iteration stays cheap and fast.
+        const specs = parsed.images.slice(0, MAX_IMAGES);
+        const assets: ImageAsset[] = specs.map((spec) => {
+          const reusable = previousAssets.find(
+            (asset) =>
+              asset.slot === spec.slot && asset.prompt === spec.prompt && asset.status === "ready",
+          );
+          return reusable ?? { ...spec, status: "pending" };
+        });
+
         const version: Version = {
           id: newId(),
           label: `v${versions.length + 1}`,
@@ -123,12 +202,16 @@ export function useStudio() {
           code: parsed.code,
           notes: parsed.notes,
           ideas: parsed.ideas,
+          assets,
           createdAt: Date.now(),
         };
 
         setVersions((current) => [...current, version]);
         setActiveId(version.id);
         setStatus("idle");
+
+        const pending = assets.filter((asset) => asset.status === "pending");
+        if (pending.length > 0) void runImageQueue(version.id, pending);
       } catch (caught) {
         if (caught instanceof DOMException && caught.name === "AbortError") {
           setStatus("idle");
@@ -141,7 +224,43 @@ export function useStudio() {
         abortRef.current = null;
       }
     },
-    [status, streamTitle, versions.length],
+    [activeVersion, runImageQueue, status, streamTitle, versions.length],
+  );
+
+  const regenerateAsset = useCallback(
+    (slot: string, prompt?: string) => {
+      const version = versions.find((item) => item.id === activeId);
+      const asset = version?.assets.find((item) => item.slot === slot);
+      if (!version || !asset) return;
+      const nextPrompt = prompt?.trim() || asset.prompt;
+      patchAsset(version.id, slot, { prompt: nextPrompt, status: "pending", error: undefined });
+      void runImage(version.id, { slot, prompt: nextPrompt, aspect: asset.aspect });
+    },
+    [activeId, patchAsset, runImage, versions],
+  );
+
+  const addAsset = useCallback(
+    (prompt: string, aspect = "16:9") => {
+      const trimmed = prompt.trim();
+      const version = versions.find((item) => item.id === activeId);
+      if (!trimmed || !version || version.assets.length >= MAX_IMAGES) return;
+
+      let slot = `custom-${version.assets.length + 1}`;
+      while (version.assets.some((asset) => asset.slot === slot)) slot = `${slot}-x`;
+
+      setVersions((current) =>
+        current.map((item) =>
+          item.id === version.id
+            ? {
+                ...item,
+                assets: [...item.assets, { slot, aspect, prompt: trimmed, status: "pending" }],
+              }
+            : item,
+        ),
+      );
+      void runImage(version.id, { slot, prompt: trimmed, aspect });
+    },
+    [activeId, runImage, versions],
   );
 
   const restore = useCallback(
@@ -170,6 +289,9 @@ export function useStudio() {
     stop,
     reset,
     restore,
+    regenerateAsset,
+    addAsset,
+    maxAssets: MAX_IMAGES,
     clearError: () => setError(null),
   };
 }

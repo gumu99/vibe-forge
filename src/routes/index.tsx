@@ -1,14 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
-import { Code2, Download, Eye, Plus } from "lucide-react";
+import { Code2, Download, Eye, Images, Plus } from "lucide-react";
 
+import { AssetsPane } from "@/components/vibe/AssetsPane";
 import { BrandMark } from "@/components/vibe/BrandMark";
 import { BuildSidebar } from "@/components/vibe/BuildSidebar";
 import { CodePane } from "@/components/vibe/CodePane";
 import { Landing } from "@/components/vibe/Landing";
 import { PreviewPane } from "@/components/vibe/PreviewPane";
 import { PromptComposer } from "@/components/vibe/PromptComposer";
-import { downloadHtml, slugify } from "@/lib/vibe/sandbox";
+import { applyAssets, downloadHtml, slugify } from "@/lib/vibe/sandbox";
 import { useStudio } from "@/lib/vibe/useStudio";
 
 const TITLE = "Vibe Coder — Describe an idea, get a working app";
@@ -31,7 +32,7 @@ export const Route = createFileRoute("/")({
 
 function VibeCoder() {
   const studio = useStudio();
-  const [tab, setTab] = useState<"preview" | "code">("preview");
+  const [tab, setTab] = useState<"preview" | "code" | "assets">("preview");
 
   const busy = studio.status === "streaming";
   const hasProject = studio.versions.length > 0 || busy;
@@ -44,6 +45,8 @@ function VibeCoder() {
 
   const code = busy && studio.streamCode ? studio.streamCode : (studio.activeVersion?.code ?? "");
   const title = studio.activeVersion?.title || studio.streamTitle || "Untitled app";
+  const assets = studio.activeVersion?.assets ?? [];
+  const exportCode = applyAssets(code, assets);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
@@ -64,6 +67,7 @@ function VibeCoder() {
               [
                 ["preview", Eye, "Preview"],
                 ["code", Code2, "Code"],
+                ["assets", Images, "Images"],
               ] as const
             ).map(([id, Icon, label]) => (
               <button
@@ -85,7 +89,7 @@ function VibeCoder() {
           <button
             type="button"
             disabled={!code}
-            onClick={() => downloadHtml(`${slugify(title)}.html`, code)}
+            onClick={() => downloadHtml(`${slugify(title)}.html`, exportCode)}
             className="inline-flex items-center gap-1.5 rounded-lg border border-hairline px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
           >
             <Download className="size-3.5" />
@@ -120,10 +124,44 @@ function VibeCoder() {
           <div
             className={`min-h-0 border-hairline lg:border-r ${tab === "preview" ? "block" : "hidden"} lg:block`}
           >
-            <PreviewPane code={code} streaming={busy} title={title} />
+            <PreviewPane code={code} streaming={busy} title={title} assets={assets} />
           </div>
-          <div className={`min-h-0 ${tab === "code" ? "block" : "hidden"} lg:block`}>
-            <CodePane code={code} streaming={busy} title={title} />
+          <div className={`flex min-h-0 flex-col ${tab === "preview" ? "hidden" : "flex"} lg:flex`}>
+            <div className="hidden items-center gap-1 border-b border-hairline px-3 py-2 lg:flex">
+              {(
+                [
+                  ["code", Code2, "Code"],
+                  ["assets", Images, `Images${assets.length ? ` (${assets.length})` : ""}`],
+                ] as const
+              ).map(([id, Icon, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setTab(id)}
+                  aria-pressed={tab === id}
+                  className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors ${
+                    tab === id
+                      ? "bg-surface-raised text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Icon className="size-3.5" />
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="min-h-0 flex-1">
+              {tab === "assets" ? (
+                <AssetsPane
+                  assets={assets}
+                  maxAssets={studio.maxAssets}
+                  onRegenerate={studio.regenerateAsset}
+                  onAdd={studio.addAsset}
+                />
+              ) : (
+                <CodePane code={code} streaming={busy} title={title} />
+              )}
+            </div>
           </div>
         </div>
       </div>
