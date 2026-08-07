@@ -1,3 +1,5 @@
+import type { ProjectFile } from "./parse";
+
 export type AssetStatus = "pending" | "ready" | "error";
 
 export type ImageAsset = {
@@ -51,10 +53,55 @@ export function applyAssets(code: string, assets: ImageAsset[] = []): string {
   });
 }
 
+function normalize(path: string): string {
+  return path.replace(/^\.?\//, "").toLowerCase();
+}
+
+function findFile(files: ProjectFile[], href: string): ProjectFile | undefined {
+  const target = normalize(href.split(/[?#]/)[0] ?? "");
+  return files.find(
+    (file) =>
+      normalize(file.path) === target || normalize(file.path).endsWith(`/${target.split("/").pop()}`)
+      ,
+  );
+}
+
+/**
+ * Inlines relative CSS/JS files into the entry HTML so a multi-file project
+ * renders inside the srcdoc sandbox (which has no file system).
+ */
+export function bundleProject(entryHtml: string, files: ProjectFile[] = []): string {
+  if (!entryHtml || files.length === 0) return entryHtml;
+  let html = entryHtml;
+
+  html = html.replace(
+    /<link[^>]+rel=["']stylesheet["'][^>]*>/gi,
+    (tag) => {
+      const href = /href=["']([^"']+)["']/i.exec(tag)?.[1];
+      if (!href || /^(https?:)?\/\//i.test(href)) return tag;
+      const file = findFile(files, href);
+      return file ? `<style>\n${file.content}\n</style>` : tag;
+    },
+  );
+
+  html = html.replace(/<script([^>]*)src=["']([^"']+)["']([^>]*)><\/script>/gi, (tag, _a, src) => {
+    if (/^(https?:)?\/\//i.test(String(src))) return tag;
+    const file = findFile(files, String(src));
+    if (!file) return tag;
+    return "<scr" + "ipt>\n" + file.content + "\n</scr" + "ipt>";
+  });
+
+  return html;
+}
+
 /** Injects a sandbox-safe storage shim and error reporter into generated documents. */
-export function buildSrcDoc(code: string, assets: ImageAsset[] = []): string {
+export function buildSrcDoc(
+  code: string,
+  assets: ImageAsset[] = [],
+  files: ProjectFile[] = [],
+): string {
   if (!code.trim()) return "";
-  const withAssets = applyAssets(code, assets);
+  const withAssets = applyAssets(bundleProject(code, files), assets);
   if (/<head[^>]*>/i.test(withAssets)) {
     return withAssets.replace(/<head[^>]*>/i, (match) => `${match}\n${SHIM}`);
   }
@@ -62,11 +109,51 @@ export function buildSrcDoc(code: string, assets: ImageAsset[] = []): string {
 }
 
 export function downloadHtml(filename: string, code: string) {
-  const blob = new Blob([code], { type: "text/html;charset=utf-8" });
+  downloadText(filename, code, "text/html;charset=utf-8");
+}
+
+export function downloadText(filename: string, content: string, type = "text/plain;charset=utf-8") {
+  const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+/** Zips the whole project (with generated images inlined) and downloads it. */
+export async function downloadProjectZip(
+  name: string,
+  files: ProjectFile[],
+  assets: ImageAsset[] = [],
+) {
+  const { default: JSZip } = await import("jszip");
+  const zip = new JSZip();
+  const folder = zip.folder(name) ?? zip;
+
+  for (const file of files) {
+    folder.file(file.path, applyAssets(file.content, assets));
+  }
+
+  const ready = assets.filter((asset) => asset.status === "ready" && asset.dataUrl);
+  if (ready.length > 0) {
+    const images = folder.folder("images");
+    for (const asset of ready) {
+      const [meta, base64] = (asset.dataUrl ?? "").split(",");
+      if (!base64) continue;
+      const ext = /image\/(\w+)/.exec(meta ?? "")?.[1] ?? "png";
+      images?.file(`${asset.slot}.${ext === "jpeg" ? "jpg" : ext}`, base64, { base64: true });
+    }
+  }
+
+  const blob = await zip.generateAsync({ type: "blob" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${name}.zip`;
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
