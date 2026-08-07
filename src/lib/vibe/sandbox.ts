@@ -61,8 +61,8 @@ function findFile(files: ProjectFile[], href: string): ProjectFile | undefined {
   const target = normalize(href.split(/[?#]/)[0] ?? "");
   return files.find(
     (file) =>
-      normalize(file.path) === target || normalize(file.path).endsWith(`/${target.split("/").pop()}`)
-      ,
+      normalize(file.path) === target ||
+      normalize(file.path).endsWith(`/${target.split("/").pop()}`),
   );
 }
 
@@ -74,15 +74,12 @@ export function bundleProject(entryHtml: string, files: ProjectFile[] = []): str
   if (!entryHtml || files.length === 0) return entryHtml;
   let html = entryHtml;
 
-  html = html.replace(
-    /<link[^>]+rel=["']stylesheet["'][^>]*>/gi,
-    (tag) => {
-      const href = /href=["']([^"']+)["']/i.exec(tag)?.[1];
-      if (!href || /^(https?:)?\/\//i.test(href)) return tag;
-      const file = findFile(files, href);
-      return file ? `<style>\n${file.content}\n</style>` : tag;
-    },
-  );
+  html = html.replace(/<link[^>]+rel=["']stylesheet["'][^>]*>/gi, (tag) => {
+    const href = /href=["']([^"']+)["']/i.exec(tag)?.[1];
+    if (!href || /^(https?:)?\/\//i.test(href)) return tag;
+    const file = findFile(files, href);
+    return file ? `<style>\n${file.content}\n</style>` : tag;
+  });
 
   html = html.replace(/<script([^>]*)src=["']([^"']+)["']([^>]*)><\/script>/gi, (tag, _a, src) => {
     if (/^(https?:)?\/\//i.test(String(src))) return tag;

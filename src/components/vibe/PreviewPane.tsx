@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Monitor, RotateCw, Smartphone, Tablet } from "lucide-react";
 
+import type { ProjectFile } from "@/lib/vibe/parse";
 import { buildSrcDoc, type ImageAsset } from "@/lib/vibe/sandbox";
 
 type Device = "desktop" | "tablet" | "mobile";
@@ -22,17 +23,19 @@ export function PreviewPane({
   streaming,
   title,
   assets = [],
+  files = [],
 }: {
   code: string;
   streaming: boolean;
   title: string;
   assets?: ImageAsset[];
+  files?: ProjectFile[];
 }) {
   const [device, setDevice] = useState<Device>("desktop");
   const [nonce, setNonce] = useState(0);
   const lastGoodRef = useRef("");
 
-  const srcDoc = useMemo(() => buildSrcDoc(code, assets), [code, assets]);
+  const srcDoc = useMemo(() => buildSrcDoc(code, assets, files), [code, assets, files]);
   if (srcDoc && !streaming) lastGoodRef.current = srcDoc;
 
   useEffect(() => {
