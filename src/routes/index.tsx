@@ -9,7 +9,13 @@ import { CodePane } from "@/components/vibe/CodePane";
 import { Landing } from "@/components/vibe/Landing";
 import { PreviewPane } from "@/components/vibe/PreviewPane";
 import { PromptComposer } from "@/components/vibe/PromptComposer";
-import { applyAssets, downloadHtml, slugify } from "@/lib/vibe/sandbox";
+import {
+  applyAssets,
+  bundleProject,
+  downloadHtml,
+  downloadProjectZip,
+  slugify,
+} from "@/lib/vibe/sandbox";
 import { useStudio } from "@/lib/vibe/useStudio";
 
 const TITLE = "Vibe Coder — Describe an idea, get a working app";
@@ -46,7 +52,10 @@ function VibeCoder() {
   const code = busy && studio.streamCode ? studio.streamCode : (studio.activeVersion?.code ?? "");
   const title = studio.activeVersion?.title || studio.streamTitle || "Untitled app";
   const assets = studio.activeVersion?.assets ?? [];
-  const exportCode = applyAssets(code, assets);
+  const files =
+    busy && studio.streamFiles.length ? studio.streamFiles : (studio.activeVersion?.files ?? []);
+  const multiFile = files.length > 1;
+  const exportCode = applyAssets(bundleProject(code, files), assets);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
@@ -66,7 +75,7 @@ function VibeCoder() {
             {(
               [
                 ["preview", Eye, "Preview"],
-                ["code", Code2, "Code"],
+                ["code", Code2, `Code${files.length ? ` (${files.length})` : ""}`],
                 ["assets", Images, "Images"],
               ] as const
             ).map(([id, Icon, label]) => (
@@ -89,11 +98,15 @@ function VibeCoder() {
           <button
             type="button"
             disabled={!code}
-            onClick={() => downloadHtml(`${slugify(title)}.html`, exportCode)}
+            onClick={() =>
+              multiFile
+                ? void downloadProjectZip(slugify(title), files, assets)
+                : downloadHtml(`${slugify(title)}.html`, exportCode)
+            }
             className="inline-flex items-center gap-1.5 rounded-lg border border-hairline px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
           >
             <Download className="size-3.5" />
-            <span className="hidden sm:inline">Export</span>
+            <span className="hidden sm:inline">{multiFile ? "Download ZIP" : "Export"}</span>
           </button>
           <button
             type="button"
@@ -124,13 +137,13 @@ function VibeCoder() {
           <div
             className={`min-h-0 border-hairline lg:border-r ${tab === "preview" ? "block" : "hidden"} lg:block`}
           >
-            <PreviewPane code={code} streaming={busy} title={title} assets={assets} />
+            <PreviewPane code={code} streaming={busy} title={title} assets={assets} files={files} />
           </div>
           <div className={`flex min-h-0 flex-col ${tab === "preview" ? "hidden" : "flex"} lg:flex`}>
             <div className="hidden items-center gap-1 border-b border-hairline px-3 py-2 lg:flex">
               {(
                 [
-                  ["code", Code2, "Code"],
+                  ["code", Code2, `Code${files.length ? ` (${files.length})` : ""}`],
                   ["assets", Images, `Images${assets.length ? ` (${assets.length})` : ""}`],
                 ] as const
               ).map(([id, Icon, label]) => (
@@ -159,7 +172,13 @@ function VibeCoder() {
                   onAdd={studio.addAsset}
                 />
               ) : (
-                <CodePane code={code} streaming={busy} title={title} />
+                <CodePane
+                  files={files}
+                  code={code}
+                  streaming={busy}
+                  title={title}
+                  assets={assets}
+                />
               )}
             </div>
           </div>

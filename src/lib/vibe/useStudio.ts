@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 
-import { parseGeneration, type ImageSpec } from "./parse";
+import { parseGeneration, type ImageSpec, type ProjectFile } from "./parse";
 import { ERROR_MARK, MAX_IMAGES } from "./prompt";
 import type { ImageAsset } from "./sandbox";
 
@@ -12,6 +12,7 @@ export type Version = {
   title: string;
   prompt: string;
   code: string;
+  files: ProjectFile[];
   notes: string;
   ideas: string[];
   assets: ImageAsset[];
@@ -49,6 +50,7 @@ export function useStudio() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [status, setStatus] = useState<StudioStatus>("idle");
   const [streamCode, setStreamCode] = useState("");
+  const [streamFiles, setStreamFiles] = useState<ProjectFile[]>([]);
   const [streamTitle, setStreamTitle] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -120,6 +122,7 @@ export function useStudio() {
     setVersions([]);
     setActiveId(null);
     setStreamCode("");
+    setStreamFiles([]);
     setStreamTitle("");
     setError(null);
     setStatus("idle");
@@ -135,6 +138,7 @@ export function useStudio() {
       setStatus("streaming");
       setError(null);
       setStreamCode("");
+      setStreamFiles([]);
       setStreamTitle("");
 
       const turns: Turn[] = [...turnsRef.current, { role: "user", content: trimmed }];
@@ -169,6 +173,7 @@ export function useStudio() {
           raw += decoder.decode(value, { stream: true });
           const partial = parseGeneration(raw);
           if (partial.code) setStreamCode(partial.code);
+          if (partial.files.length) setStreamFiles(partial.files);
           if (partial.title) setStreamTitle(partial.title);
         }
 
@@ -200,6 +205,7 @@ export function useStudio() {
           title: parsed.title || streamTitle || "Untitled app",
           prompt: trimmed,
           code: parsed.code,
+          files: parsed.files,
           notes: parsed.notes,
           ideas: parsed.ideas,
           assets,
@@ -221,6 +227,7 @@ export function useStudio() {
         setStatus("error");
       } finally {
         setStreamCode("");
+        setStreamFiles([]);
         abortRef.current = null;
       }
     },
@@ -283,6 +290,7 @@ export function useStudio() {
     activeId,
     status,
     streamCode,
+    streamFiles,
     streamTitle,
     error,
     generate,
