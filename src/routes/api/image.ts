@@ -26,6 +26,7 @@ async function viaGemini(key: string, text: string): Promise<Generated> {
   const response = await fetch(GEMINI_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+    signal: AbortSignal.timeout(50_000),
     body: JSON.stringify({
       contents: [{ role: "user", parts: [{ text }] }],
       generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
@@ -51,6 +52,7 @@ async function viaGateway(key: string, text: string): Promise<Generated> {
   const response = await fetch(GATEWAY_ENDPOINT, {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(50_000),
     body: JSON.stringify({
       model: GATEWAY_MODEL,
       contents: [{ role: "user", parts: [{ text }] }],
@@ -107,11 +109,17 @@ export const Route = createFileRoute("/api/image")({
             const image = await attempt();
             return Response.json(image);
           } catch (error) {
-            lastError = error instanceof Error ? error.message : lastError;
+            console.error("[vibe] image attempt failed", error);
+            lastError =
+              error instanceof Error
+                ? error.name === "TimeoutError" || error.name === "AbortError"
+                  ? "Image generation timed out. Try again with a simpler prompt."
+                  : error.message
+                : lastError;
           }
         }
 
-        return Response.json({ error: lastError }, { status: 502 });
+        return Response.json({ error: lastError }, { status: 200 });
       },
     },
   },
