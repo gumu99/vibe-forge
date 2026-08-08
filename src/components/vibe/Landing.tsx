@@ -98,6 +98,10 @@ export function Landing({
           ))}
         </div>
       </div>
+
+      <footer className="relative z-10 mt-auto px-6 py-5 text-center md:px-10">
+        <p className="text-[11px] text-muted-foreground/60">Created by Saurav</p>
+      </footer>
     </main>
   );
 }

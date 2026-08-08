@@ -193,6 +193,10 @@ function VibeCoder() {
           error={studio.error}
         />
       </div>
+
+      <div className="pointer-events-none fixed right-4 bottom-4 z-50 hidden lg:block">
+        <span className="text-[10px] text-muted-foreground/40">Created by Saurav</span>
+      </div>
     </div>
   );
 }
