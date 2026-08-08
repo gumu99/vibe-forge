@@ -14,7 +14,8 @@ function friendlyError(error: unknown): string {
 }
 
 type Turn = { role: "user" | "assistant"; content: string };
-type Body = { turns?: Turn[] };
+type ProjectFile = { path: string; content: string };
+type Body = { turns?: Turn[]; current?: { title?: string; files?: ProjectFile[] } | null };
 
 const MAX_TURNS = 12;
 
@@ -56,6 +57,25 @@ export const Route = createFileRoute("/api/generate")({
           role: turn.role,
           content: turn.content,
         }));
+
+        // Follow-up prompts must edit the existing project, never start a new one.
+        const currentFiles = body.current?.files?.filter(
+          (file) => file && typeof file.path === "string" && typeof file.content === "string",
+        );
+        if (currentFiles && currentFiles.length > 0) {
+          const snapshot = currentFiles
+            .map((file) => `<<<FILE:${file.path}>>>\n${file.content}`)
+            .join("\n");
+          messages.splice(messages.length - 1, 0, {
+            role: "user",
+            content:
+              `This is the CURRENT project ("${body.current?.title ?? "Untitled"}"). ` +
+              `My next message is an EDIT REQUEST for this exact project — do NOT start a new app, ` +
+              `do NOT change the concept, and keep all existing files, structure, ids, copy and styling ` +
+              `unless the request explicitly asks to change them. Return the FULL updated project.\n\n` +
+              snapshot,
+          });
+        }
 
         try {
           let streamFailure: unknown = null;

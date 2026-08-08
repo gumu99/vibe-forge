@@ -143,12 +143,20 @@ export function useStudio() {
 
       const turns: Turn[] = [...turnsRef.current, { role: "user", content: trimmed }];
       const previousAssets = activeVersion?.assets ?? [];
+      const current = activeVersion
+        ? {
+            title: activeVersion.title,
+            files: activeVersion.files.length
+              ? activeVersion.files
+              : [{ path: "index.html", content: activeVersion.code }],
+          }
+        : null;
 
       try {
         const response = await fetch("/api/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ turns }),
+          body: JSON.stringify({ turns, current }),
           signal: controller.signal,
         });
 
@@ -187,7 +195,7 @@ export function useStudio() {
           throw new Error("The model didn't return a usable app. Try rephrasing your prompt.");
         }
 
-        turnsRef.current = [...turns, { role: "assistant", content: raw }];
+        turnsRef.current = turns;
 
         // Reuse images whose slot and prompt are unchanged so iteration stays cheap and fast.
         const specs = parsed.images.slice(0, MAX_IMAGES);
@@ -276,10 +284,7 @@ export function useStudio() {
       if (!version) return;
       setActiveId(id);
       // Rewind the model's working context so the next prompt iterates on this version.
-      turnsRef.current = [
-        { role: "user", content: version.prompt },
-        { role: "assistant", content: version.code },
-      ];
+      turnsRef.current = [{ role: "user", content: version.prompt }];
     },
     [versions],
   );
