@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
-import { Code2, Download, Eye, Images, Plus } from "lucide-react";
+import { Code2, Download, Eye, Images, Pencil, Plus, X } from "lucide-react";
 
 import { AssetsPane } from "@/components/vibe/AssetsPane";
 import { BrandMark } from "@/components/vibe/BrandMark";
@@ -39,6 +39,7 @@ export const Route = createFileRoute("/")({
 function VibeCoder() {
   const studio = useStudio();
   const [tab, setTab] = useState<"preview" | "code" | "assets">("preview");
+  const [editing, setEditing] = useState(false);
 
   const busy = studio.status === "streaming";
   const hasProject = studio.versions.length > 0 || busy;
@@ -95,6 +96,15 @@ function VibeCoder() {
               </button>
             ))}
           </div>
+          <button
+            type="button"
+            disabled={busy || !studio.activeVersion}
+            onClick={() => setEditing(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-40"
+          >
+            <Pencil className="size-3.5" />
+            <span className="hidden sm:inline">Edit</span>
+          </button>
           <button
             type="button"
             disabled={!code}
@@ -194,8 +204,70 @@ function VibeCoder() {
         />
       </div>
 
+      {editing && (
+        <EditDialog
+          title={title}
+          busy={busy}
+          onClose={() => setEditing(false)}
+          onSubmit={(value) => {
+            setEditing(false);
+            studio.generate(value);
+          }}
+        />
+      )}
+
       <div className="pointer-events-none fixed right-4 bottom-4 z-50 hidden lg:block">
         <span className="text-[10px] text-muted-foreground/40">Created by Saurav</span>
+      </div>
+    </div>
+  );
+}
+
+function EditDialog({
+  title,
+  busy,
+  onClose,
+  onSubmit,
+}: {
+  title: string;
+  busy: boolean;
+  onClose: () => void;
+  onSubmit: (value: string) => void;
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Edit this project"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-xl rounded-2xl border border-hairline bg-surface-raised p-5 shadow-[var(--shadow-glow)]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="mb-3 flex items-start gap-3">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold">Edit this project</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Continues from where “{title}” left off — describe only what should change.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="ml-auto rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+        <PromptComposer
+          onSubmit={onSubmit}
+          onStop={() => {}}
+          busy={busy}
+          placeholder="e.g. Make the primary button red and add a dark mode toggle"
+        />
       </div>
     </div>
   );
